@@ -1865,7 +1865,7 @@ def clean_up_contact_borders(rawcontactsurface, cleanborders):
         
     contactcorners = np.zeros(cleanareas.shape, np.dtype(np.int32))
 
-    ### This should be the last part and I hope to god that this process will robustly find corners:
+    ### This should be the last part and should robustly find corners:
     for (i,j,k), value in np.ndenumerate(contactsurface):
         if value != 0:
             if len(np.where(contactsurface[sub(i,1):i+2, sub(j,1):j+2, sub(k,1):k+2] == value)[0]) == 2:

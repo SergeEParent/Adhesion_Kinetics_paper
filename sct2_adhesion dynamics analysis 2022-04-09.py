@@ -529,7 +529,7 @@ nu = 2
 
 
 # Committee member wanted plots to restrict view to n>1:
-n_size_thresh_for_xlim = 1 #1
+n_size_thresh_for_xlim = 0 # to restric view to n>1, change this value to 1
 
 ###############################################################################
 ### Open all of your files into long-form dataframes:
@@ -5070,6 +5070,7 @@ fig, ax = plt.subplots(figsize=(width_1col,height_1col))
 [ax.plot(ee_low_adh_contnd[i]['Time (minutes)'], ee_low_adh_contnd[i]['Contact Surface Length (px)']/ee_low_adh_contnd[i]['first_valid_radius'], c='lightgrey') for i in file_index]
 [ax.scatter(ee_low_adh_contnd[i]['Time (minutes)'], ee_low_adh_contnd[i]['Contact Surface Length (px)']/ee_low_adh_contnd[i]['first_valid_radius'], marker='.', c='k', zorder=10) for i in file_index]
 ax.set_ylim(0,2.0)
+ax.set_xlim(-2, 61)
 ax.draw
 fig.savefig(Path.joinpath(output_dir, r'ee_unstable_low_adh_example.tif'), dpi=dpi_graph)
 plt.close(fig)
@@ -5809,26 +5810,55 @@ instant_low_growth_rates_cont_fitted = instant_low_growth_rates_contnd_fitted.co
 instant_low_growth_rates_cont_fitted['max_growth_rate'] = data_cont
 
 
-data = pd.concat([logistic_highplat_growth_rates_cont, logistic_low_growth_rates_cont, instant_low_growth_rates_cont_fitted])
-data = data.query('Experimental_Condition == "ecto-ecto"')
-data_min, data_max = min(data['max_growth_rate']), max(data['max_growth_rate'])
+growth_rate_data = pd.concat([logistic_highplat_growth_rates_cont, logistic_low_growth_rates_cont, instant_low_growth_rates_cont_fitted])
+growth_rate_data = growth_rate_data.query('Experimental_Condition == "ecto-ecto"')
+data_min, data_max = min(growth_rate_data['max_growth_rate']), max(growth_rate_data['max_growth_rate'])
 
+ee_low_high_cont = logistic_highplat_growth_rates_cont.query('Experimental_Condition == "ecto-ecto"').max_growth_rate
+ee_no_low_inst = instant_low_growth_rates_cont_fitted.query('Experimental_Condition == "ecto-ecto"').max_growth_rate
+ee_no_low_slow = logistic_low_growth_rates_cont.query('Experimental_Condition == "ecto-ecto"').max_growth_rate
+
+
+## Test if any of the groups are significantly different:
+## (using Kruskal instead of F-oneway because not all sample sizes are similar, 
+## and data probably not normal)
+growth_rates_krusk = stats.kruskal(ee_low_high_cont, ee_no_low_slow, ee_no_low_inst)
+## At least one group is different.
+
+## Do post-hoc test to check which groups are different: 
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
+## --Tukey posthoc test for each combination of 2 groups:
+growth_rates_tukey = pairwise_tukeyhsd(
+    endog=growth_rate_data['max_growth_rate'], 
+    groups=growth_rate_data['growth_rate_type'], 
+    alpha=0.05)
+
+## Print and save results of post-hoc test:
+print(growth_rates_tukey)
+with open(Path.joinpath(output_dir, r'max_growth_rate_comparison_tukey.tsv'), 
+          'w', newline='') as file_out:
+            tsv_obj = csv.writer(file_out, delimiter='\t')
+            tsv_obj.writerows(growth_rates_tukey._results_table.data)
+            
+            
+            
 plt.close('all')
 fig, ax = plt.subplots(figsize=(width_2col*2/3 *0.9,height_1pt5col*0.9))
-# sns.stripplot(x='growth_rate_type', y='max_growth_rate', data=data, 
+# sns.stripplot(x='growth_rate_type', y='max_growth_rate', data=growth_rate_data, 
 #               hue='t_int', palette=['grey', 'k'], 
 #               jitter=jit, dodge=False, size=pt_size, ax=ax)
-sns.swarmplot(x='growth_rate_type', y='max_growth_rate', data=data, 
+
+ax.grid(b=True, which='both', axis='y', c='lightgrey', zorder=1)
+sns.swarmplot(x='growth_rate_type', y='max_growth_rate', data=growth_rate_data, 
               hue='t_int', palette=['grey', 'k'], 
-              dodge=False, size=pt_size, ax=ax)
-sns.boxplot(x='growth_rate_type', y='max_growth_rate', data=data,
+              dodge=False, size=pt_size, ax=ax, zorder=10)
+sns.boxplot(x='growth_rate_type', y='max_growth_rate', data=growth_rate_data,
             orient='v', medianprops=dict(color='red'), 
-            boxprops=dict(facecolor='w'), ax=ax)
+            boxprops=dict(facecolor='w', zorder=2), ax=ax, zorder=9)
             # boxprops=dict(color='w'),
 # ax.semilogy()
 # ax.set_ylim(10**order_of_mag(data_min), 10**(order_of_mag(data_max)+1))
 ax.set_ylim(0, data_max+1)
-ax.grid(b=True, which='both', axis='y', c='lightgrey')
 ax.set_xticklabels(labels='')
 ax.set_ylabel('')
 ax.set_xlabel('')
@@ -5838,6 +5868,8 @@ ax.legend(title='timestep', handles=handles, labels=['30s', '60s'], ncol=1, loc=
 
 plt.tight_layout()
 fig.savefig(Path.joinpath(output_dir, r"max_growth_rate_comparison_cont_low_grow.tif"), dpi=dpi_graph, bbox_inches='tight')
+
+
 
 
 
@@ -6429,7 +6461,7 @@ sns.distplot(contact_dynamics.query('time_intervals == 1.0')['num_touch_events']
 ax.xaxis.set_minor_locator(ml_minor)
 ax.set_xticks(np.arange(xlim_l,xlim_h,2))
 ax.set_yticks(np.arange(0,13,4))
-ax.set_ylim(0,13)
+# ax.set_ylim(0,13)
 # ax.set_xticklabels(np.arange(xlim_l-1,xlim_h-1,step))
 # ax.set_ylabel('Count')
 ax.set_xlabel('')

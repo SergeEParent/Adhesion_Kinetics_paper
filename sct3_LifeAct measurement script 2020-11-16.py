@@ -262,7 +262,7 @@ def kmeans_binary_sep(labeled_img, normed_metrics):
 
 
 
-### All of this crap in the test is to try and find which pixels in red_ridges
+### All of this was a test is to try and find which pixels in red_ridges
 ### most closely fit a circle and to then give these pixels values that can
 ### then be used when trying to use kmeans_binary_sep to separate real signal
 ### from background signal:
@@ -2640,6 +2640,7 @@ def create_border_bin_sizes(border_array, ordered_border_indices, num_bins):
 
 
 def make_open_border_indices_sequential(open_borders_arr, red_id, blu_id, channel1, channel2):
+    # time.sleep(0.05)
     diag_struct_elem = np.array([[0,1,0], [1,0,1], [0,1,0]])
     diag_struct_elem = np.reshape( diag_struct_elem, (3,3))#,1))
     
@@ -2756,6 +2757,7 @@ def sort_pixels_into_bins(reordered_border_indices, size_list_of_other_bins, clo
 ### The following line is global because it's used later on in the script:
 bin_curvature_details_headers = ['bin_#','bin_color', '1 * curvature_sign / R_3', '1 / R_3', 'curvature_sign', 'xc_3', 'yc_3', 'R_3', 'Ri_3', 'residu_3', 'size_of_bin', 'x_fit_arc_start', 'y_fit_arc_start', 'x_fit_arc_stop', 'y_fit_arc_stop', 'arc_angle (in radians)', 'fitted curvature arclength']
 def fit_curves_to_bins(bin_indices, one_channel_of_curveborders, odr_circle_fit_iterations):
+    # time.sleep(0.05)
     bin_curvature_details = []
     bin_curvature_details.append(bin_curvature_details_headers)
 #    binned_curvature_fig = plt.figure()
@@ -3087,7 +3089,7 @@ def clean_up_contact_borders(rawcontactsurface, cleanborders, cell1_id, cell2_id
         
     contactcorners = np.zeros(cleanareas.shape, np.dtype(np.int32))
 
-    ### This should be the last part and I hope to god that this process will robustly find corners:
+    ### This should be the last part and should robustly find corners:
     for (i,j,k), value in np.ndenumerate(contactsurface):
         if value != 0:
             if len(np.where(contactsurface[sub(i,1):i+2, sub(j,1):j+2, :] == value)[0]) == 2:
@@ -4398,7 +4400,14 @@ for filenumber in range(total_files):
         # clean_up_borders from working properly on both the inner and outer 
         # edges:
         # redseg_clean = morphology.binary_closing(redseg_clean_rough)
-        bluseg_clean = morphology.binary_closing(cell_areas[:,:,channel2])
+        # bluseg_clean = morphology.binary_closing(cell_areas[:,:,channel2])
+        # We are going to try padding the image with a 1px-wide border made up
+        # of zeros because binary_closing connects regions to the edge if the
+        # cell is almost touching the borders in the non-padded image (i.e. if
+        # the cell is only 1px away from the edge), we will then trim padding
+        bluseg_clean = morphology.binary_closing(pad_img_edges(cell_areas[:,:,channel2], 0, 1))
+        bluseg_clean = bluseg_clean[1:-1, 1:-1]
+
 
         # Buffing out sharp corners leads to unnatural roundness, which is seen
         # as single pixels in borders, but the problems regions show up as multiple 
@@ -6219,7 +6228,13 @@ for filenumber in range(total_files):
         # clean_up_borders from working properly on both the inner and outer 
         # edges:
         # redseg_clean = morphology.binary_closing(redseg_clean_rough)
-        bluseg_clean = morphology.binary_closing(cell_areas[:,:,channel2])
+        # bluseg_clean = morphology.binary_closing(cell_areas[:,:,channel2])
+        # We are going to try padding the image with a 1px-wide border made up
+        # of zeros because binary_closing connects regions to the edge if the
+        # cell is almost touching the borders in the non-padded image (i.e. if
+        # the cell is only 1px away from the edge), we will then trim padding
+        bluseg_clean = morphology.binary_closing(pad_img_edges(cell_areas[:,:,channel2], 0, 1))
+        bluseg_clean = bluseg_clean[1:-1, 1:-1]
 
         # Buffing out sharp corners leads to unnatural roundness, which is seen
         # as single pixels in borders, but the problems regions show up as multiple 

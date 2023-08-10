@@ -20,6 +20,7 @@ from uncertainties import unumpy as unp
 # For creating graphs
 import matplotlib as mpl
 from matplotlib import pyplot as plt
+from matplotlib import ticker
 import matplotlib.lines as mlines
 from matplotlib import colors as mcol
 import matplotlib.cm
@@ -1874,16 +1875,141 @@ linreg_contvfluor_df.to_csv(Path.joinpath(out_dir, r'linreg_contvfluor.csv'))
 # plt.ylim(0,2.0)
 
 
+## Create a table stating whether each dissociation buffer contact has a cell 
+## that is exhibiting circus movements:
+headers = ('Source_File', 'circus_movements')
+# circus_mvmts = (('2020_01_17-series002_crop2_z2.csv', True), 
+#                 ('2020_01_17-series003_crop1_z2.csv', False), 
+#                 ('2020_01_17-series003_crop3_z1.csv', (la_contnd_df.query('Source_File == "2020_01_17-series003_crop3_z1.csv"')['Time (minutes)'].min(), float(32/2))), 
+#                 ('2020_01_17-series003_crop4_z1.csv', True), 
+#                 ('2020_01_17-series003_crop5_z2.csv', (float(45/2), la_contnd_df.query('Source_File == "2020_01_17-series003_crop5_z2.csv"')['Time (minutes)'].max())), 
+#                 ('2020_02_27-series001_crop1_z3.csv', False), 
+#                 ('2020_02_27-series001_crop2_z2.csv', False), 
+#                 ('2020_02_27-series001_crop3_z2.csv', False), 
+#                 ('2020_02_27-series001_crop4_z3.csv', False), 
+#                 ('2020_02_27-series001_crop5_z2.csv', False), 
+#                 ('2020_02_27-series006_crop1_z3.csv', True), 
+#                 ('2020_02_27-series006_crop2_z3.csv', True), 
+#                 ('2020_02_27-series007_crop1_z2.csv', False), 
+#                 ('2020_02_27-series008_crop1_z1.csv', True)
+#                 )
+circus_mvmts = (('2020_01_17-series002_crop2', True), 
+                ('2020_01_17-series003_crop1', False), 
+                ('2020_01_17-series003_crop3', (la_contnd_df.query('Source_File == "2020_01_17-series003_crop3_z1.csv"')['Time (minutes)'].min(), float(32/2))), 
+                ('2020_01_17-series003_crop4', True), 
+                ('2020_01_17-series003_crop5', (float(45/2), la_contnd_df.query('Source_File == "2020_01_17-series003_crop5_z2.csv"')['Time (minutes)'].max())), 
+                ('2020_02_27-series001_crop1', False), 
+                ('2020_02_27-series001_crop2', False), 
+                ('2020_02_27-series001_crop3', False), 
+                ('2020_02_27-series001_crop4', False), 
+                ('2020_02_27-series001_crop5', False), 
+                ('2020_02_27-series006_crop1', True), 
+                ('2020_02_27-series006_crop2', True), 
+                ('2020_02_27-series007_crop1', False), 
+                ('2020_02_27-series008_crop1', True)
+                )
 
+circus_mvmts_df = pd.DataFrame(circus_mvmts, columns=headers)
+circus_mvmts_dict = dict(circus_mvmts)
+
+## subset the dissociation buffer data from la_contnd_df:
+# la_contnd_df_eedb = la_contnd_df.query('Experimental_Condition == "ee1xDB"')
+data_eeMBS = la_contnd_df.query('Experimental_Condition == "ee1xMBS"')
+data_eeDB = la_contnd_df.query('Experimental_Condition == "ee1xDB"')
+
+
+## add the circus_mvmts data as a column in la_contnd_df_eedb by mapping it:
+def chk_dict_val_in_var(var):
+    for fname in circus_mvmts_dict:
+        if fname in var:
+            val = circus_mvmts_dict[fname]
+            break
+        else:
+            val = np.nan 
+    return fname, val
+
+
+
+## create the column values:
+timelapse_nms, circus_mvmts_col = zip(*data_eeDB['Source_File'].apply(lambda x: chk_dict_val_in_var(x)))
+
+## add the columns to la_contnd_df_eedb:
+data_eeDB['Timelapse_Names'] = timelapse_nms
+data_eeDB['circus_movements?'] = circus_mvmts_col
+data_eeDB['circus_movements?'] = data_eeDB['circus_movements?'].astype(str)
+
+## Get the means and medians of the groups:
+# data_eeDB.groupby('circus_movements?')['Contact Surface Length (N.D.)'].apply(np.mean)
+tlapse_means = data_eeDB.groupby(['Timelapse_Names', 'circus_movements?'])['Contact Surface Length (N.D.)'].apply(np.mean).reset_index()
+tlapse_medians = data_eeDB.groupby(['Timelapse_Names', 'circus_movements?'])['Contact Surface Length (N.D.)'].apply(np.median).reset_index()
+
+
+
+
+## two timelapses have started or stopped their circus movements partway 
+## through the video, we will rename those labels to look prettier:
+circ_mov_lab_dict = {'True':'yes', 'False':'no', '(0.0, 16.0)':'stops\npartway', '(22.5, 35.0)':'starts\npartway'}
+
+## This plot contains all contact measurements (the raw data):
+fig, ax = plt.subplots(figsize=(width_1col, width_1col))
+sns.violinplot(x='circus_movements?', y='Contact Surface Length (N.D.)', 
+               data=data_eeDB, ax=ax)
+xtick_labs = [circ_mov_lab_dict[x.get_text()] for x in ax.get_xticklabels()]
+ax.set_xticklabels(xtick_labs)
+# ax.set_ylim(0)
+ax.set_ylabel('Contact Diameter (N.D.)')
+ax.set_xlabel('Circus Movements?')
+fig.savefig(Path.joinpath(out_dir, r'circus_mvmts_compar.tif'), dpi=dpi_graph, bbox_inches='tight')
+
+## This plot contains all mean contact measurements:
+fig, ax = plt.subplots(figsize=(width_1col, width_1col))
+sns.boxplot(x='circus_movements?', y='Contact Surface Length (N.D.)', 
+              data=tlapse_means, color='w', ax=ax)
+sns.swarmplot(x='circus_movements?', y='Contact Surface Length (N.D.)', 
+              data=tlapse_means, marker='o', color='k', ax=ax)
+xtick_labs = [circ_mov_lab_dict[x.get_text()] for x in ax.get_xticklabels()]
+ax.set_xticklabels(xtick_labs)
+ax.set_ylim(0)
+ax.set_ylabel('Mean Contact Diameter (N.D.)')
+ax.set_xlabel('Circus Movements?')
+fig.savefig(Path.joinpath(out_dir, r'circus_mvmts_compar_means.tif'), dpi=dpi_graph, bbox_inches='tight')
+
+## This plot contains all median contact measurements:
+fig, ax = plt.subplots(figsize=(width_1col, width_1col))
+sns.boxplot(x='circus_movements?', y='Contact Surface Length (N.D.)', 
+               data=tlapse_medians, color='w', ax=ax)
+sns.swarmplot(x='circus_movements?', y='Contact Surface Length (N.D.)', 
+               data=tlapse_medians, marker='o', color='k', ax=ax)
+xtick_labs = [circ_mov_lab_dict[x.get_text()] for x in ax.get_xticklabels()]
+ax.set_xticklabels(xtick_labs)
+ax.set_ylim(0)
+ax.set_ylabel('Median Contact Diameter (N.D.)')
+ax.set_xlabel('Circus Movements?')
+fig.savefig(Path.joinpath(out_dir, r'circus_mvmts_compar_medians.tif'), dpi=dpi_graph, bbox_inches='tight')
+
+
+
+
+## check if any of the groups are significantly different:
+nms, grps = list(zip(*tlapse_means.groupby('circus_movements?')['Contact Surface Length (N.D.)']))
+circus_mvmt_summary = [(nm, grp.describe()) for nm,grp in zip(nms, grps)]
+print(circus_mvmt_summary)
+circus_mvmt_krusk = stats.kruskal(*grps)
+## By eye the groups look very similar (with one timelapse being an outlier). 
+## The p-value returned is much greater than 0.05 as well.
+
+
+                    
 # 2D plots for all timelapses together for Bc/B:
 fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(x, y, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(x, y, c='g', marker='.', s=3, alpha=0.5, zorder=10)
 sns.scatterplot('Average Angle (deg)', 'Contact Surface Length (N.D.)', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xMBS'], 
+                data=data_eeMBS, 
                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
 # ax.scatter(xdb, ydb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
 ax.plot(theor_ang*2, theor_contnd, c='k', lw=1, ls='--', zorder=1)
+
 ax.plot(r30sim_contnd_df['Average Angle (deg)'], 
         r30sim_contnd_df['Contact Surface Length (N.D.)'], 
         c='k', marker='.', markersize=3, lw=1, ls='--', zorder=2)
@@ -1907,9 +2033,10 @@ fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(x, y, c='g', marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(xdb, ydb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
 sns.scatterplot('Average Angle (deg)', 'Contact Surface Length (N.D.)', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xDB'], 
+                data=data_eeDB, 
                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=9)
 ax.plot(theor_ang*2, theor_contnd, c='k', lw=1, ls='--', zorder=1)
+
 ax.plot(r30sim_contnd_df['Average Angle (deg)'], 
         r30sim_contnd_df['Contact Surface Length (N.D.)'], 
         c='k', marker='.', markersize=3, lw=1, ls='--', zorder=2)
@@ -1931,12 +2058,11 @@ plt.close(fig)
 
 
 
-
 fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(y, z, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(y, z, c='g', marker='.', s=3, alpha=0.5, zorder=10)
 sns.scatterplot('Contact Surface Length (N.D.)', 'lifeact_fluor_normed_mean', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xMBS'], 
+                data=data_eeMBS, 
                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
 # ax.scatter(ydb, zdb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
 ax.plot(contnd_predict*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
@@ -1958,10 +2084,20 @@ fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(y, z, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(y, z, c='g', marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(ydb, zdb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
-sns.scatterplot('Contact Surface Length (N.D.)', 'lifeact_fluor_normed_mean', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xDB'], 
-                palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+# sns.scatterplot('Contact Surface Length (N.D.)', 'lifeact_fluor_normed_mean', hue='Source_File',
+#                 data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xDB'], 
+#                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+# ax.plot(contnd_predict*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
+
+sns.scatterplot(x='Contact Surface Length (N.D.)', y='lifeact_fluor_normed_mean', hue='Source_File', 
+                data=data_eeDB, palette='bright', 
+                s=3, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+ax.errorbar(x=data_eeDB['Contact Surface Length (N.D.)'], y=data_eeDB['lifeact_fluor_normed_mean'], 
+            yerr=data_eeDB['lifeact_fluor_normed_sem'], color='grey', marker='.', 
+            ms=0, lw=0, elinewidth=0.5, ecolor='lightgrey', alpha=1, zorder=1)
+# ax.plot(theor_contnd_LA, theor_relten_LA, c='k', ls='--', zorder=0)   
 ax.plot(contnd_predict*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
+
 # ax.plot(r30simLA_contnd_df['Contact Surface Length (N.D.)'], 
 #         r30simLA_contnd_df['lifeact_fluor_normed_mean'], 
 #         c='k', marker='.', markersize=3, lw=1, ls='--', zorder=2)
@@ -1977,6 +2113,62 @@ fig.savefig(Path.joinpath(out_dir, r'diam_vs_fluor_lagfp_db.tif'), dpi=dpi_graph
 plt.close(fig)
 
 
+## Also plot the diam_vs_fluor_lagfp_db but use the circus movement 
+## classifications as the hue:
+## also, only take the subset of data with circus movements that always or 
+## never occur:
+# data_to_plot = la_contnd_df_eedb.query('`circus_movements?` == "True" or `circus_movements?` == "False"')
+
+fig, ax = plt.subplots(figsize=(width_1col, width_1col))
+# ax.scatter(y, z, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
+# ax.scatter(y, z, c='g', marker='.', s=3, alpha=0.5, zorder=10)
+# ax.scatter(ydb, zdb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
+# sns.scatterplot('Contact Surface Length (N.D.)', 'lifeact_fluor_normed_mean', 
+#                 hue='circus_movements?', data=data_to_plot, 
+#                 s=5, linewidth=0, alpha=0.5, ax=ax, legend='brief', zorder=10)
+# ax.plot(contnd_predict*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
+sns.scatterplot(x='Contact Surface Length (N.D.)', y='lifeact_fluor_normed_mean', 
+                hue='circus_movements?', data=data_eeDB, 
+                s=3, linewidth=0, alpha=0.5, ax=ax, legend='brief', zorder=10)
+ax.errorbar(x=data_eeDB['Contact Surface Length (N.D.)'], y=data_eeDB['lifeact_fluor_normed_mean'], 
+            yerr=data_eeDB['lifeact_fluor_normed_sem'], color='grey', marker='.', 
+            ms=0, lw=0, elinewidth=0.5, ecolor='lightgrey', alpha=1, zorder=1)
+# ax.plot(theor_contnd, theor_relten, c='k', ls='--', zorder=0)   
+ax.plot(contnd_predict*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
+
+# ax.plot(r30simLA_contnd_df['Contact Surface Length (N.D.)'], 
+#         r30simLA_contnd_df['lifeact_fluor_normed_mean'], 
+#         c='k', marker='.', markersize=3, lw=1, ls='--', zorder=2)
+ax.set_xlim(0,3)
+ax.axvline(expect_max_contnd, c='grey', lw=1, zorder=0)
+ax.set_ylim(0,2)
+# ax.set_xlabel('Contact Diameter (N.D.)')
+# ax.set_ylabel(r'$\beta_c/\beta$')
+ax.set_xlabel('')
+ax.set_ylabel('')
+leg_handles, leg_labels = ax.get_legend_handles_labels()
+## the first entries in the handles and labels is the legend title, which we 
+## don't want:
+leg_handles, leg_labels = leg_handles[1:], leg_labels[1:]
+## two timelapses have started or stopped their circus movements partway 
+## through the video, we will rename those labels to look prettier:
+for i,lab in enumerate(leg_labels):
+    if lab == 'True':
+        leg_labels[i] = 'yes'
+    if lab == 'False':
+        leg_labels[i] = 'no'
+    if lab == '(0.0, 16.0)':
+        leg_labels[i] = 'stops\npartway'
+    if lab == '(22.5, 35.0)':
+        leg_labels[i] = 'starts\npartway'
+ax.legend(title='circus movements?', handles=leg_handles, labels=leg_labels, 
+          ncol=1, loc='upper right')
+# plt.tight_layout()
+fig.savefig(Path.joinpath(out_dir, r'diam_vs_fluor_lagfp_db_circusmvmt.tif'), dpi=dpi_graph, bbox_inches='tight')
+plt.close(fig)
+
+
+
 
 
 
@@ -1984,7 +2176,7 @@ fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(x, z, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(x, z, c='g', marker='.', s=3, alpha=0.5, zorder=10)
 sns.scatterplot('Average Angle (deg)', 'lifeact_fluor_normed_mean', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xMBS'], 
+                data=data_eeMBS, 
                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
 # ax.scatter(xdb, zdb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
 ax.plot(angle_predict_deg*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
@@ -2004,7 +2196,7 @@ plt.close(fig)
 
 ## Also save the data from angle_vs_fluor_lagfp_mbs.tif 
 ## because I want to re-use it in the simulation script 
-## (sct5_viscous_shell_model) to compare against models
+## (sct5_viscous_shell_model) to compare against models 
 la_contnd_df.to_pickle(Path.joinpath(out_dir, 'la_contnd_df.pkl'))
 
 
@@ -2013,10 +2205,20 @@ fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(x, z, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(x, z, c='g', marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(xdb, zdb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
-sns.scatterplot('Average Angle (deg)', 'lifeact_fluor_normed_mean', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xDB'], 
-                palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+# sns.scatterplot('Average Angle (deg)', 'lifeact_fluor_normed_mean', hue='Source_File',
+#                 data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xDB'], 
+#                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+# ax.plot(angle_predict_deg*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
+
+sns.scatterplot(x='Average Angle (deg)', y='lifeact_fluor_normed_mean', hue='Source_File', 
+                data=data_eeDB, palette='bright', 
+                s=3, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+ax.errorbar(x=data_eeDB['Average Angle (deg)'], y=data_eeDB['lifeact_fluor_normed_mean'], 
+            yerr=data_eeDB['lifeact_fluor_normed_sem'], color='grey', marker='.', 
+            ms=0, lw=0, elinewidth=0.5, ecolor='lightgrey', alpha=1, zorder=1)
+# ax.plot(theor_ang_LA, theor_relten, c='k', ls='--', zorder=0)   
 ax.plot(angle_predict_deg*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
+
 # ax.plot(r30sim_contnd_df['Average Angle (deg)'], 
 #         r30sim_contnd_df['lifeact_fluor_normed_mean'], 
 #         c='k', marker='.', markersize=3, lw=1, ls='--', zorder=2)
@@ -2040,7 +2242,7 @@ fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(x, y, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(x, y, c='r', marker='.', s=3, alpha=0.5, zorder=10)
 sns.scatterplot('Average Angle (deg)', 'Contact Surface Length (N.D.)', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xMBS'], 
+                data=data_eeMBS, 
                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
 # ax.scatter(xdb, ydb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
 ax.plot(angle_predict_deg*2, contnd_predict*2, c='k', lw=1, ls='--', zorder=1)
@@ -2068,7 +2270,7 @@ fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(x, y, c='r', marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(xdb, ydb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
 sns.scatterplot('Average Angle (deg)', 'Contact Surface Length (N.D.)', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xDB'], 
+                data=data_eeDB, 
                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
 ax.plot(angle_predict_deg*2, contnd_predict*2, c='k', lw=1, ls='--', zorder=1)
 ax.plot(r30sim_contnd_df['Average Angle (deg)'], 
@@ -2097,7 +2299,7 @@ fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(y, z, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(y, w, c='r', marker='.', s=3, alpha=0.5, zorder=10)
 sns.scatterplot('Contact Surface Length (N.D.)', 'mbrfp_fluor_normed_mean', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xMBS'], 
+                data=data_eeMBS, 
                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
 # ax.scatter(ydb, wdb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
 ax.plot(contnd_predict*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
@@ -2119,10 +2321,20 @@ fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(y, z, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(y, w, c='r', marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(ydb, wdb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
-sns.scatterplot('Contact Surface Length (N.D.)', 'mbrfp_fluor_normed_mean', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xDB'], 
-                palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+# sns.scatterplot('Contact Surface Length (N.D.)', 'mbrfp_fluor_normed_mean', hue='Source_File',
+#                 data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xDB'], 
+#                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+# ax.plot(contnd_predict*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
+
+sns.scatterplot(x='Contact Surface Length (N.D.)', y='mbrfp_fluor_normed_mean', hue='Source_File', 
+                data=data_eeDB, palette='bright', 
+                s=3, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+ax.errorbar(x=data_eeDB['Contact Surface Length (N.D.)'], y=data_eeDB['mbrfp_fluor_normed_mean'], 
+            yerr=data_eeDB['mbrfp_fluor_normed_sem'], color='grey', marker='.', 
+            ms=0, lw=0, elinewidth=0.5, ecolor='lightgrey', alpha=1, zorder=1)
+# ax.plot(theor_ang_LA, theor_relten, c='k', ls='--', zorder=0)   
 ax.plot(contnd_predict*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
+
 # ax.plot(r30sim_contnd_df['Contact Surface Length (N.D.)'], 
 #         r30sim_contnd_df['lifeact_fluor_normed_mean'], 
 #         c='k', marker='.', markersize=3, lw=1, ls='--', zorder=2)
@@ -2139,12 +2351,11 @@ plt.close(fig)
 
 
 
-
 fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(x, z, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(x, w, c='r', marker='.', s=3, alpha=0.5, zorder=10)
 sns.scatterplot('Average Angle (deg)', 'mbrfp_fluor_normed_mean', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xMBS'], 
+                data=data_eeMBS, 
                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
 # ax.scatter(xdb, wdb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
 ax.plot(angle_predict_deg*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
@@ -2166,10 +2377,20 @@ fig, ax = plt.subplots(figsize=(width_1col, width_1col))
 # ax.scatter(x, z, c=t, cmap=cmap, marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(x, w, c='r', marker='.', s=3, alpha=0.5, zorder=10)
 # ax.scatter(xdb, wdb, c='grey', marker='.', s=3, alpha=0.5, zorder=9)
-sns.scatterplot('Average Angle (deg)', 'mbrfp_fluor_normed_mean', hue='Source_File',
-                data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xDB'], 
-                palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+# sns.scatterplot('Average Angle (deg)', 'mbrfp_fluor_normed_mean', hue='Source_File',
+#                 data=la_contnd_df[la_contnd_df['Experimental_Condition'] == 'ee1xDB'], 
+#                 palette='bright', s=5, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+# ax.plot(angle_predict_deg*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
+
+sns.scatterplot(x='Average Angle (deg)', y='mbrfp_fluor_normed_mean', hue='Source_File', 
+                data=data_eeDB, palette='bright', 
+                s=3, linewidth=0, alpha=0.5, ax=ax, legend=False, zorder=10)
+ax.errorbar(x=data_eeDB['Average Angle (deg)'], y=data_eeDB['mbrfp_fluor_normed_mean'], 
+            yerr=data_eeDB['mbrfp_fluor_normed_sem'], color='grey', marker='.', 
+            ms=0, lw=0, elinewidth=0.5, ecolor='lightgrey', alpha=1, zorder=1)
+# ax.plot(theor_ang_LA, theor_relten, c='k', ls='--', zorder=0)   
 ax.plot(angle_predict_deg*2, beta_star_div_beta_contnd_range, c='k', lw=1, ls='--', zorder=1)
+
 # ax.plot(r30sim_contnd_df['Average Angle (deg)'], 
 #         r30sim_contnd_df['lifeact_fluor_normed_mean'], 
 #         c='k', marker='.', markersize=3, lw=1, ls='--', zorder=2)
@@ -2595,14 +2816,14 @@ plt.close('all')
 for i in range(len(redchan_fluor_at_contact_inner_padded)):
     if i > 0:
         fig, ((ax1,ax2),(ax3,ax4)) = plt.subplots(nrows=2, ncols=2)#, sharey='row')
-        graph1 = ax1.imshow(redchan_fluor_at_contact_inner_padded[i])
-        graph2 = ax2.imshow(redchan_fluor_outside_contact_inner_padded[i])
-        graph3 = ax3.imshow(redchan_fluor_at_contact_outer_padded[i])
-        graph4 = ax4.imshow(redchan_fluor_outside_contact_outer_padded[i])
-        ax1.set_title('contact inner redchan')
-        ax2.set_title('noncontact inner redchan')
-        ax3.set_title('contact outer redchan')
-        ax4.set_title('noncontact outer redchan')
+        graph1 = ax1.imshow(redchan_fluor_at_contact_inner_padded[i], vmin=0)
+        graph2 = ax2.imshow(redchan_fluor_outside_contact_inner_padded[i], vmin=0)
+        graph3 = ax3.imshow(redchan_fluor_at_contact_outer_padded[i], vmin=0)
+        graph4 = ax4.imshow(redchan_fluor_outside_contact_outer_padded[i], vmin=0)
+        ax1.set_title('contact inner mbRFP')
+        ax2.set_title('noncontact inner mbRFP')
+        ax3.set_title('contact outer mbRFP')
+        ax4.set_title('noncontact outer mbRFP')
         ax1.set_aspect('auto')
         ax2.set_aspect('auto')
         ax3.set_aspect('auto')
@@ -2611,8 +2832,8 @@ for i in range(len(redchan_fluor_at_contact_inner_padded)):
         ax2.set_yticklabels(ax2.get_yticks() * time_res)
         ax3.set_yticklabels(ax3.get_yticks() * time_res)
         ax4.set_yticklabels(ax4.get_yticks() * time_res)
-        fig.text(-0.02, 0.5, 'Time point (minutes * 2)', va='center', rotation='vertical', fontsize=24)
-        fig.text(0.5, -0.03, '%s'%lifeact[i]['Source_File'].iloc[0], ha='center', fontsize=24)
+        fig.text(-0.01, 0.5, 'Time point (minutes)', va='center', rotation='vertical')#, fontsize=24)
+        fig.text(0.5, 0.0, '%s'%lifeact[i]['Source_File'].iloc[0], ha='center')#, fontsize=24)
         divider1 = make_axes_locatable(ax1)
         divider2 = make_axes_locatable(ax2)
         divider3 = make_axes_locatable(ax3)
@@ -2621,13 +2842,40 @@ for i in range(len(redchan_fluor_at_contact_inner_padded)):
         cax2 = divider2.append_axes("right", size="5%", pad=0.05)
         cax3 = divider3.append_axes("right", size="5%", pad=0.05)
         cax4 = divider4.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(graph1, cax=cax1)
-        plt.colorbar(graph2, cax=cax2)
-        plt.colorbar(graph3, cax=cax3)
-        plt.colorbar(graph4, cax=cax4)
-        plt.tight_layout()
+        ## adjust yticks on colorbars so the number of ticks is between some 
+        ## min and some max number ## and so that '0' is always one of the ticks:
+        if np.any(np.isfinite(redchan_fluor_at_contact_inner_padded[i])):
+            plt.colorbar(graph1, cax=cax1)#, ticks=locator)
+            cax1.locator_params(axis='y', nbins=6, min_n_ticks=4)
+        else:
+            cax1.set_xticks([])            
+            cax1.set_yticks([])
+
+        if np.any(np.isfinite(redchan_fluor_outside_contact_inner_padded[i])):        
+            plt.colorbar(graph2, cax=cax2)#, ticks=locator)
+            cax2.locator_params(axis='y', nbins=6, min_n_ticks=4)
+            # cax2.set_yticks()
+        else:
+            cax2.set_xticks([])
+            cax2.set_yticks([])
+
+        if np.any(np.isfinite(redchan_fluor_at_contact_outer_padded[i])):                
+            plt.colorbar(graph3, cax=cax3)#, ticks=locator)
+            cax3.locator_params(axis='y', nbins=6, min_n_ticks=4)
+        else:
+            cax3.set_xticks([])            
+            cax3.set_yticks([])
+        
+        if np.any(np.isfinite(redchan_fluor_outside_contact_outer_padded[i])):
+            plt.colorbar(graph4, cax=cax4)#, ticks=locator)
+            cax4.locator_params(axis='y', nbins=6, min_n_ticks=4)
+        else:
+            cax4.set_xticks([])            
+            cax4.set_yticks([])
+
+        plt.tight_layout(pad=1.2)
         #plt.show()
-multipdf(Path.joinpath(out_dir, r"ee_redchan_kymos.pdf"))
+multipdf(Path.joinpath(out_dir, r"ee_redchan_kymos.pdf"), tight=True)
 plt.close('all')
 
  
@@ -2635,14 +2883,14 @@ plt.close('all')
 for i in range(len(grnchan_fluor_at_contact_inner_padded)):
     if i > 0:
         fig, ((ax1,ax2),(ax3,ax4)) = plt.subplots(nrows=2, ncols=2)
-        graph1 = ax1.imshow(grnchan_fluor_at_contact_inner_padded[i])
-        graph2 = ax2.imshow(grnchan_fluor_outside_contact_inner_padded[i])
-        graph3 = ax3.imshow(grnchan_fluor_at_contact_outer_padded[i])
-        graph4 = ax4.imshow(grnchan_fluor_outside_contact_outer_padded[i])
-        ax1.set_title('contact inner grnchan')
-        ax2.set_title('noncontact inner grnchan')
-        ax3.set_title('contact outer grnchan')
-        ax4.set_title('noncontact outer grnchan')
+        graph1 = ax1.imshow(grnchan_fluor_at_contact_inner_padded[i], vmin=0)
+        graph2 = ax2.imshow(grnchan_fluor_outside_contact_inner_padded[i], vmin=0)
+        graph3 = ax3.imshow(grnchan_fluor_at_contact_outer_padded[i], vmin=0)
+        graph4 = ax4.imshow(grnchan_fluor_outside_contact_outer_padded[i], vmin=0)
+        ax1.set_title('contact inner F-actin')
+        ax2.set_title('noncontact inner F-actin')
+        ax3.set_title('contact outer F-actin')
+        ax4.set_title('noncontact outer F-actin')
         ax1.set_aspect('auto')
         ax2.set_aspect('auto')
         ax3.set_aspect('auto')
@@ -2651,8 +2899,8 @@ for i in range(len(grnchan_fluor_at_contact_inner_padded)):
         ax2.set_yticklabels(ax2.get_yticks() * time_res)
         ax3.set_yticklabels(ax3.get_yticks() * time_res)
         ax4.set_yticklabels(ax4.get_yticks() * time_res)
-        fig.text(0.05, 0.5, 'Time (minutes)', va='center', rotation='vertical', fontsize=24)
-        fig.text(0.5, 0.03, '%s'%lifeact[i]['Source_File'].iloc[0], ha='center', fontsize=24)
+        fig.text(-0.01, 0.5, 'Time (minutes)', va='center', rotation='vertical')#, fontsize=24)
+        fig.text(0.5, 0.0, '%s'%lifeact[i]['Source_File'].iloc[0], ha='center')#, fontsize=24)
         divider1 = make_axes_locatable(ax1)
         divider2 = make_axes_locatable(ax2)
         divider3 = make_axes_locatable(ax3)
@@ -2661,18 +2909,52 @@ for i in range(len(grnchan_fluor_at_contact_inner_padded)):
         cax2 = divider2.append_axes("right", size="5%", pad=0.05)
         cax3 = divider3.append_axes("right", size="5%", pad=0.05)
         cax4 = divider4.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(graph1, cax=cax1)
-        plt.colorbar(graph2, cax=cax2)
-        plt.colorbar(graph3, cax=cax3)
-        plt.colorbar(graph4, cax=cax4)
-        # plt.tight_layout()
+        ## adjust yticks on colorbars so the number of ticks is between some 
+        ## min and some max number ## and so that '0' is always one of the ticks:
+        # locator = ticker.MaxNLocator(nbins=6, min_n_ticks=5)
+        if np.any(np.isfinite(grnchan_fluor_at_contact_inner_padded[i])):
+            plt.colorbar(graph1, cax=cax1)#, ticks=locator)
+            cax1.locator_params(axis='y', nbins=6, min_n_ticks=4)
+        else:
+            cax1.set_xticks([])            
+            cax1.set_yticks([])
+
+        if np.any(np.isfinite(grnchan_fluor_outside_contact_inner_padded[i])):        
+            plt.colorbar(graph2, cax=cax2)#, ticks=locator)
+            cax2.locator_params(axis='y', nbins=6, min_n_ticks=4)
+            # cax2.set_yticks()
+        else:
+            cax2.set_xticks([])
+            cax2.set_yticks([])
+
+        if np.any(np.isfinite(grnchan_fluor_at_contact_outer_padded[i])):                
+            plt.colorbar(graph3, cax=cax3)#, ticks=locator)
+            cax3.locator_params(axis='y', nbins=6, min_n_ticks=4)
+        else:
+            cax3.set_xticks([])            
+            cax3.set_yticks([])
+        
+        if np.any(np.isfinite(grnchan_fluor_outside_contact_outer_padded[i])):
+            plt.colorbar(graph4, cax=cax4)#, ticks=locator)
+            cax4.locator_params(axis='y', nbins=6, min_n_ticks=4)
+        else:
+            cax4.set_xticks([])            
+            cax4.set_yticks([])
+        
+        plt.tight_layout(pad=1.2)
         #plt.show()
-multipdf(Path.joinpath(out_dir, r"ee_grnchan_kymos.pdf"))
-
-
-plt.show()
+multipdf(Path.joinpath(out_dir, r"ee_grnchan_kymos.pdf"), tight=True)
+# plt.show()
 plt.close('all')
 
+
+# def get_n_ticks(min_n_ticks, max_n_ticks, min_value, max_value):
+#     n_ticks = range(min_n_ticks, max_n_ticks+1)
+#     for tick_num in n_ticks:
+#         np.linspace(min_value, max_value, num=tick_num)
+
+#     np.arange(0, max_n_ticks, 1) * 
+#     ok_step_sizes = [20, 25, 50, 100]
 
 
 ### Check fluorescence of regions immediately on either side of the contact?
@@ -3132,7 +3414,7 @@ plt.close('all')
 
 
 
-### Let's look at the distribution of fluoresnce values in single cells relative
+### Let's look at the distribution of fluorescence values in single cells relative
 ### to the mean of all those values at each given timepoint:
 lifeact_dbsc_clean = la_contnd_df[la_contnd_df['Experimental_Condition']=='ee1xDBsc'].copy()
 
@@ -3726,7 +4008,7 @@ for name,df in bin_curvatures_ee1xMBS_red.groupby('Source_File'):
     # fig.tight_layout
     # plt.show()
 multipdf(Path.joinpath(out_dir, r"octant_curvatures_ee1xMBS_lineplots.pdf"), tight=True, dpi=dpi_graph)
-
+plt.close('all')
 
 
 #####################################################################################################
